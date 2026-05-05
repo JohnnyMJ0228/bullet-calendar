@@ -943,10 +943,9 @@ async function generate() {
 
   // Clear input for next entry
   document.getElementById('input').value = '';
-  rebuildTextarea();
   closeModal();
   refreshView();
-  showToast(`${result.parsed.length}件の予定を追加しました`);
+  setTimeout(() => showToast(`${result.parsed.length}件の予定を追加しました`), 350);
 }
 
 // --- Render event item HTML ---
