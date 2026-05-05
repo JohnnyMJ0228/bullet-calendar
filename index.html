@@ -786,6 +786,7 @@ function parseEvents(text) {
     let clean = line.replace(/^[-\*・•]\s*/, '');
     clean = clean.replace(/\u3000/g, ' ');  // full-width space → half-width
     clean = clean.replace(/\uff1a/g, ':');   // full-width colon → half-width
+    clean = clean.replace(/\uff5e/g, '〜');   // full-width tilde → wave dash
     clean = clean.replace(/\uff0d/g, '-');   // full-width hyphen → half-width
     clean = clean.replace(/\uff0f/g, '/');   // full-width slash → half-width
     clean = clean.replace(/\s+/g, ' ').trim(); // collapse multiple spaces
