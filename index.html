@@ -782,34 +782,86 @@ function parseEvents(text) {
   const titleColors = {};
 
   for (const line of lines) {
-    // Normalize: full-width spaces/colons/hyphens to half-width
+    // Step 0: Normalize
     let clean = line.replace(/^[-\*・•]\s*/, '');
-    clean = clean.replace(/\u3000/g, ' ');  // full-width space → half-width
-    clean = clean.replace(/\uff1a/g, ':');   // full-width colon → half-width
-    clean = clean.replace(/\uff5e/g, '〜');   // full-width tilde → wave dash
-    clean = clean.replace(/\uff0d/g, '-');   // full-width hyphen → half-width
-    clean = clean.replace(/\uff0f/g, '/');   // full-width slash → half-width
-    clean = clean.replace(/\s+/g, ' ').trim(); // collapse multiple spaces
+    clean = clean.replace(/\u3000/g, ' ');
+    clean = clean.replace(/[\uff1a]/g, ':');
+    clean = clean.replace(/[\uff5e]/g, '~');
+    clean = clean.replace(/[\uff0d\u2012\u2013\u2014\u2015\u2212\u30fc\uff70]/g, '-');
+    clean = clean.replace(/[\uff0f]/g, '/');
+    // Full-width digits → half-width
+    clean = clean.replace(/[\uff10-\uff19]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+    clean = clean.replace(/\s+/g, ' ').trim();
     if (!clean) continue;
 
-    const m =
-      clean.match(/^(?:(\d{4})年)?(1?\d)月(3?[0-9]|[12]\d|0?[1-9])日 (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/) ||
-      clean.match(/^(?:(\d{4})\/)?(1?\d)\/(3?[0-9]|[12]\d|0?[1-9]) (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/) ||
-      clean.match(/^(?:(\d{4})-)?(1?\d)-(3?[0-9]|[12]\d|0?[1-9]) (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/);
-    if (!m) { errors.push(clean); continue; }
+    // Step 1: Extract date
+    let year = null, month = null, day = null, rest = '';
+    const datePatterns = [
+      /^(\d{4})年(\d{1,2})月(\d{1,2})日\s*(.*)$/,   // 2026年6月11日
+      /^(\d{1,2})月(\d{1,2})日\s*(.*)$/,              // 6月11日
+      /^(\d{4})\/(\d{1,2})\/(\d{1,2})\s*(.*)$/,       // 2026/6/11
+      /^(\d{1,2})\/(\d{1,2})\s*(.*)$/,                // 6/11
+      /^(\d{4})-(\d{1,2})-(\d{1,2})\s*(.*)$/,         // 2026-6-11
+      /^(\d{1,2})-(\d{1,2})\s*(.*)$/,                 // 6-11
+    ];
+    let dateMatch = null;
+    for (const pat of datePatterns) {
+      dateMatch = clean.match(pat);
+      if (dateMatch) break;
+    }
+    if (!dateMatch) { errors.push(clean); continue; }
 
-    const year = m[1] ? parseInt(m[1]) : now.getFullYear();
-    const month = parseInt(m[2]) - 1;
-    const day = parseInt(m[3]);
-    const startTime = m[4] || null;
-    const endTime = m[5] || null;
-    let rawTitle = m[6].trim();
+    if (dateMatch.length === 5) {
+      // Year included
+      year = parseInt(dateMatch[1]);
+      month = parseInt(dateMatch[2]) - 1;
+      day = parseInt(dateMatch[3]);
+      rest = dateMatch[4].trim();
+    } else {
+      // No year
+      month = parseInt(dateMatch[1]) - 1;
+      day = parseInt(dateMatch[2]);
+      rest = dateMatch[3].trim();
+      year = now.getFullYear();
+    }
 
     const date = new Date(year, month, day);
     if (date.getMonth() !== month || date.getDate() !== day) {
       errors.push(clean + ' (無効な日付)');
       continue;
     }
+
+    // Step 2: Extract time from rest
+    let startTime = null, endTime = null;
+    let isAllDay = false;
+
+    // Check for 終日
+    const alldayMatch = rest.match(/^終日\s*(.*)$/);
+    if (alldayMatch) {
+      isAllDay = true;
+      rest = alldayMatch[1].trim();
+    }
+
+    if (!isAllDay) {
+      // Time range: 17:15-19:15, 17:15~19:15, 17:15〜19:15
+      const timeRangeMatch = rest.match(/^(\d{1,2}:\d{2})\s*[-~〜]\s*(\d{1,2}:\d{2})\s*(.*)$/);
+      if (timeRangeMatch) {
+        startTime = timeRangeMatch[1];
+        endTime = timeRangeMatch[2];
+        rest = timeRangeMatch[3].trim();
+      } else {
+        // Single time: 17:15
+        const timeMatch = rest.match(/^(\d{1,2}:\d{2})\s*(.*)$/);
+        if (timeMatch) {
+          startTime = timeMatch[1];
+          rest = timeMatch[2].trim();
+        }
+      }
+    }
+
+    // Step 3: Rest is the title
+    let rawTitle = rest;
+    if (!rawTitle) { errors.push(clean + ' (タイトルなし)'); continue; }
 
     let manualColor = null;
     const colorTag = rawTitle.match(/\s+#(\S+)$/);
@@ -844,7 +896,7 @@ function parseEvents(text) {
       id: nextId++,
       year, month, day, title, startTime, endTime,
       startHour, startMin, endHour, endMin,
-      allDay: !startTime,
+      allDay: isAllDay || !startTime,
       color: assignedColor,
       memo: '',
       dateStr: `${year}/${pad(month+1)}/${pad(day)}`
