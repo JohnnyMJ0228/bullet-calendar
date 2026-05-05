@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bullet Calendar</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+:root {
+  --primary: #2EC84E;
+  --primary-light: #e8f8ec;
+  --primary-dark: #22a33d;
+  --bg: #f7f8fa;
+  --card: #ffffff;
+  --text: #1a1a1a;
+  --text-sub: #8e8e93;
+  --border: #ebebeb;
+  --danger: #ff3b30;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Segoe UI', sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5;
+}
+
+.app { max-width: 520px; margin: 0 auto; min-height: 100vh; background: var(--card); }
+
+/* Login screen */
+.login-screen {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh; padding: 40px 20px; text-align: center;
+}
+.login-logo { font-size: 48px; margin-bottom: 8px; }
+.login-title { font-size: 28px; font-weight: 800; margin-bottom: 4px; color: var(--primary); }
+.login-sub { font-size: 14px; color: var(--text-sub); margin-bottom: 40px; }
+.login-btn {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 32px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--card); font-size: 16px; font-weight: 600; cursor: pointer;
+  transition: all 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.login-btn:hover { background: #f5f5f5; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.login-btn img { width: 22px; height: 22px; }
+.login-error { color: var(--danger); font-size: 13px; margin-top: 16px; }
+
+/* Header */
+.app-header {
+  background: var(--primary); color: #fff; padding: 16px 20px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.app-header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+.header-btn {
+  background: rgba(255,255,255,0.2); border: none; color: #fff; padding: 6px 14px;
+  border-radius: 20px; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: background 0.2s;
+}
+.header-btn:hover { background: rgba(255,255,255,0.35); }
+.user-avatar {
+  width: 28px; height: 28px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5);
+  cursor: pointer;
+}
+
+/* Tab bar */
+.tab-bar { display: flex; border-bottom: 1px solid var(--border); background: var(--card); }
+.tab {
+  flex: 1; text-align: center; padding: 10px 0; font-size: 13px; font-weight: 500;
+  color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none;
+}
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* Month nav */
+.month-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px 10px;
+}
+.month-nav button {
+  background: none; border: none; font-size: 18px; color: var(--text-sub);
+  cursor: pointer; padding: 4px 10px; border-radius: 8px;
+}
+.month-nav button:hover { background: #f0f0f0; }
+.month-label { font-size: 17px; font-weight: 700; }
+.today-btn {
+  font-size: 12px; color: var(--primary); background: var(--primary-light);
+  border: none; padding: 4px 12px; border-radius: 14px; cursor: pointer; font-weight: 600;
+}
+.today-btn:hover { background: #d4f0da; }
+
+/* Calendar grid */
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); padding: 0 12px 8px; }
+.cal-dow {
+  text-align: center; font-size: 11px; color: var(--text-sub); padding: 4px 0 8px; font-weight: 600;
+}
+.cal-dow.sun { color: var(--danger); }
+.cal-dow.sat { color: #007aff; }
+.cal-cell {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 4px 0 6px; cursor: pointer; border-radius: 10px; transition: background 0.15s;
+}
+.cal-cell:hover { background: #f5f5f5; }
+.cal-cell.selected { background: var(--primary-light); }
+.cal-cell.other-month { opacity: 0.3; }
+.cal-num {
+  width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 500; border-radius: 50%;
+}
+.cal-cell.today .cal-num { background: var(--primary); color: #fff; font-weight: 700; }
+.cal-cell.sun .cal-num { color: var(--danger); }
+.cal-cell.sat .cal-num { color: #007aff; }
+.cal-cell.today.sun .cal-num, .cal-cell.today.sat .cal-num { color: #fff; }
+.cal-dots { display: flex; gap: 3px; margin-top: 2px; height: 6px; }
+.cal-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+/* Event colors */
+.color-0 { background: #2EC84E; } .color-1 { background: #007AFF; }
+.color-2 { background: #FF9500; } .color-3 { background: #FF3B30; }
+.color-4 { background: #AF52DE; } .color-5 { background: #FF2D55; }
+.color-6 { background: #5AC8FA; } .color-7 { background: #FFCC00; }
+.color-8 { background: #34C759; } .color-9 { background: #FF6482; }
+.ev-color-0 { border-left-color: #2EC84E; } .ev-color-1 { border-left-color: #007AFF; }
+.ev-color-2 { border-left-color: #FF9500; } .ev-color-3 { border-left-color: #FF3B30; }
+.ev-color-4 { border-left-color: #AF52DE; } .ev-color-5 { border-left-color: #FF2D55; }
+.ev-color-6 { border-left-color: #5AC8FA; } .ev-color-7 { border-left-color: #FFCC00; }
+.ev-color-8 { border-left-color: #34C759; } .ev-color-9 { border-left-color: #FF6482; }
+
+/* Day events panel */
+.day-panel { border-top: 1px solid var(--border); padding: 16px 20px; min-height: 120px; }
+.day-panel-header {
+  font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.day-panel-dow { font-size: 13px; color: var(--text-sub); font-weight: 500; }
+.no-events { font-size: 13px; color: var(--text-sub); padding: 8px 0; }
+
+.ev-item {
+  display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px;
+  border-radius: 10px; margin-bottom: 6px; background: #fafafa;
+  border-left: 4px solid var(--primary); transition: background 0.15s; cursor: pointer;
+}
+.ev-item:hover { background: #f0f0f0; }
+.ev-time { font-size: 12px; color: var(--text-sub); min-width: 55px; padding-top: 1px; }
+.ev-title { font-size: 14px; font-weight: 500; flex: 1; }
+.ev-memo-hint { font-size: 11px; color: var(--text-sub); margin-left: 4px; }
+
+/* Shared modal styles */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+  display: flex; align-items: flex-end; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--card); border-radius: 20px 20px 0 0; width: 100%; max-width: 520px;
+  max-height: 85vh; display: flex; flex-direction: column;
+  transform: translateY(100%); transition: transform 0.3s ease;
+}
+.modal-overlay.open .modal { transform: translateY(0); }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 12px; border-bottom: 1px solid var(--border);
+}
+.modal-header h2 { font-size: 17px; font-weight: 700; }
+.modal-close {
+  background: #e8e8ed; border: none; width: 30px; height: 30px; border-radius: 50%;
+  font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-sub);
+}
+.modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; }
+.modal-actions { padding: 12px 20px 24px; display: flex; gap: 10px; }
+
+textarea {
+  width: 100%; height: 220px; border: 1px solid var(--border); border-radius: 12px;
+  padding: 14px; font-size: 14px; font-family: inherit; resize: vertical;
+  line-height: 1.9; outline: none; transition: border-color 0.2s; background: #fafafa;
+}
+textarea:focus { border-color: var(--primary); background: #fff; }
+.hint { font-size: 12px; color: var(--text-sub); margin-top: 10px; line-height: 1.7; }
+.hint code { background: #f0f0f0; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+.parse-error { color: var(--danger); font-size: 12px; margin-top: 8px; }
+
+.btn {
+  flex: 1; padding: 13px 20px; border: none; border-radius: 12px; font-size: 15px;
+  font-weight: 600; cursor: pointer; transition: all 0.2s;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: none; border: 1.5px solid var(--border); color: var(--text); }
+.btn-outline:hover { background: #f5f5f5; }
+.btn-danger { background: none; border: 1.5px solid var(--danger); color: var(--danger); }
+.btn-danger:hover { background: #fff0f0; }
+
+/* Detail modal form */
+.detail-field { margin-bottom: 16px; }
+.detail-label { font-size: 12px; font-weight: 600; color: var(--text-sub); margin-bottom: 6px; }
+.detail-input {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px;
+  font-size: 14px; font-family: inherit; outline: none; background: #fafafa;
+  transition: border-color 0.2s;
+}
+.detail-input:focus { border-color: var(--primary); background: #fff; }
+.detail-row { display: flex; gap: 12px; }
+.detail-row .detail-field { flex: 1; }
+.detail-toggle { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.detail-toggle label { font-size: 14px; cursor: pointer; }
+.toggle-switch {
+  position: relative; width: 44px; height: 26px; appearance: none; -webkit-appearance: none;
+  background: #e0e0e0; border-radius: 13px; outline: none; cursor: pointer;
+  transition: background 0.2s; border: none;
+}
+.toggle-switch:checked { background: var(--primary); }
+.toggle-switch::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 22px; height: 22px; background: #fff; border-radius: 50%;
+  transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+.toggle-switch:checked::before { transform: translateX(18px); }
+.color-picker { display: flex; gap: 8px; flex-wrap: wrap; }
+.color-option {
+  width: 30px; height: 30px; border-radius: 50%; cursor: pointer;
+  border: 3px solid transparent; transition: border-color 0.15s, transform 0.15s;
+}
+.color-option:hover { transform: scale(1.15); }
+.color-option.selected { border-color: var(--text); }
+.detail-memo {
+  width: 100%; height: 80px; border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px; font-family: inherit; resize: vertical;
+  outline: none; background: #fafafa; line-height: 1.6;
+}
+.detail-memo:focus { border-color: var(--primary); background: #fff; }
+
+/* List view */
+.list-view { padding: 0 20px 20px; }
+.list-date-group { margin-bottom: 4px; }
+.list-date-header {
+  font-size: 13px; font-weight: 700; color: var(--primary); padding: 12px 0 6px;
+  display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--border);
+}
+.list-date-dow { font-weight: 500; color: var(--text-sub); }
+
+/* Day timeline view */
+.day-view {
+  overflow-y: auto; height: calc(100vh - 140px); scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+.dv-day-section { min-height: 60px; }
+.dv-day-header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--card); border-bottom: 1px solid var(--border);
+  padding: 12px 20px; display: flex; align-items: center; gap: 10px;
+}
+.dv-day-header.today { background: var(--primary-light); }
+.dv-day-date { font-size: 28px; font-weight: 800; line-height: 1; }
+.dv-day-header.today .dv-day-date { color: var(--primary); }
+.dv-day-meta { display: flex; flex-direction: column; }
+.dv-day-dow { font-size: 13px; font-weight: 600; color: var(--text); }
+.dv-day-ym { font-size: 11px; color: var(--text-sub); }
+.dv-day-header.sun .dv-day-date, .dv-day-header.sun .dv-day-dow { color: var(--danger); }
+.dv-day-header.sat .dv-day-date, .dv-day-header.sat .dv-day-dow { color: #007aff; }
+.dv-allday { padding: 4px 20px 4px 76px; }
+.dv-allday-item {
+  display: inline-block; font-size: 12px; font-weight: 500; color: #fff;
+  padding: 3px 10px; border-radius: 6px; margin: 2px 4px 2px 0; cursor: pointer;
+}
+.dv-allday-item:hover { opacity: 0.85; }
+.dv-timeline { position: relative; margin: 0 20px 0 0; }
+.dv-hour-row { display: flex; align-items: flex-start; min-height: 60px; border-top: 1px solid #f0f0f0; }
+.dv-hour-label {
+  width: 56px; min-width: 56px; padding: 0 10px 0 0;
+  font-size: 11px; color: var(--text-sub); text-align: right; transform: translateY(-7px);
+}
+.dv-hour-content {
+  flex: 1; position: relative; min-height: 60px;
+  border-left: 1px solid var(--border); padding-left: 12px;
+}
+.dv-now-line {
+  position: absolute; left: 56px; right: 20px; height: 2px;
+  background: var(--danger); z-index: 5; pointer-events: none;
+}
+.dv-now-dot {
+  position: absolute; left: 50px; width: 10px; height: 10px;
+  background: var(--danger); border-radius: 50%;
+  transform: translateY(-4px); z-index: 5; pointer-events: none;
+}
+.dv-event {
+  position: absolute; left: 12px; right: 8px;
+  border-radius: 8px; padding: 6px 10px; color: #fff;
+  font-size: 12px; overflow: hidden; z-index: 2;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12); cursor: pointer;
+}
+.dv-event:hover { opacity: 0.9; }
+.dv-event-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-event-time { font-size: 10px; opacity: 0.85; }
+.dv-empty { padding: 20px 20px 20px 76px; font-size: 13px; color: var(--text-sub); }
+
+/* User menu */
+.user-menu-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: none;
+}
+.user-menu-overlay.open { display: block; }
+.user-menu {
+  position: absolute; top: 52px; right: 12px;
+  background: var(--card); border-radius: 12px; padding: 8px 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15); min-width: 180px; z-index: 51;
+}
+.user-menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; font-size: 14px; cursor: pointer;
+  transition: background 0.15s;
+}
+.user-menu-item:hover { background: #f5f5f5; }
+.user-menu-name { font-weight: 600; padding: 10px 16px 4px; font-size: 14px; }
+.user-menu-email { padding: 0 16px 8px; font-size: 12px; color: var(--text-sub); border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.user-menu-item.danger { color: var(--danger); }
+
+/* Loading */
+.loading {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; font-size: 15px; color: var(--text-sub);
+}
+
+@media (min-width: 521px) {
+  .app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- Loading -->
+  <div class="loading" id="loadingScreen">読み込み中...</div>
+
+  <!-- Login -->
+  <div class="login-screen" id="loginScreen" style="display:none;">
+    <div class="login-logo">&#128197;</div>
+    <div class="login-title">Bullet Calendar</div>
+    <div class="login-sub">箇条書きで予定を管理</div>
+    <button class="login-btn" onclick="signIn()">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G">
+      Google でログイン
+    </button>
+    <div id="loginError" class="login-error"></div>
+  </div>
+
+  <!-- Main app (hidden until login) -->
+  <div id="mainApp" style="display:none;">
+    <div class="app-header">
+      <h1>Bullet Calendar</h1>
+      <div class="header-actions">
+        <button class="header-btn" onclick="openModal()">+ 入力</button>
+        <button class="header-btn" onclick="exportICS()">ICS</button>
+        <img class="user-avatar" id="userAvatar" src="" alt="" onclick="toggleUserMenu()">
+      </div>
+    </div>
+
+    <!-- User menu -->
+    <div class="user-menu-overlay" id="userMenuOverlay" onclick="closeUserMenu()">
+      <div class="user-menu" onclick="event.stopPropagation()">
+        <div class="user-menu-name" id="userName"></div>
+        <div class="user-menu-email" id="userEmail"></div>
+        <div class="user-menu-item danger" onclick="signOut()">ログアウト</div>
+      </div>
+    </div>
+
+    <div class="tab-bar">
+      <button class="tab active" data-view="month" onclick="switchView('month')">月</button>
+      <button class="tab" data-view="day" onclick="switchView('day')">日</button>
+      <button class="tab" data-view="list" onclick="switchView('list')">リスト</button>
+    </div>
+    <div class="month-nav">
+      <button onclick="changeMonth(-1)">&lsaquo;</button>
+      <span class="month-label" id="monthLabel"></span>
+      <button onclick="changeMonth(1)">&rsaquo;</button>
+      <button class="today-btn" onclick="goToday()">今日</button>
+    </div>
+    <div id="monthView">
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="day-panel" id="dayPanel"></div>
+    </div>
+    <div id="dayView" class="day-view" style="display:none;"></div>
+    <div id="listView" class="list-view" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- Input Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event,'modalOverlay')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>予定を入力</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="input" placeholder="例：
+- 5/3 10:00 チームミーティング
+- 5月3日 10:00 チームミーティング
+- 2026年5月5日 14:00-15:30 プレゼン準備
+- 2026/5/10 終日 社内研修
+- 5-15 9:00 歯医者 #赤
+- 5/20 18:00-20:00 飲み会 #オレンジ"></textarea>
+      <div class="hint">
+        対応フォーマット：<br>
+        <code>5月3日</code> <code>2026年5月3日</code> <code>5/3</code> <code>2026/5/3</code> <code>5-3</code><br>
+        時間: <code>10:00</code> <code>14:00-15:30</code> <code>終日</code><br>
+        色指定: 末尾に <code>#赤</code> <code>#青</code> <code>#緑</code> <code>#オレンジ</code> <code>#紫</code> <code>#ピンク</code> <code>#水色</code> <code>#黄</code> <code>#黄緑</code> <code>#ローズ</code><br>
+        先頭の - ・ * は自動で無視されます
+      </div>
+      <div id="errors" class="parse-error"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="clearAll()">クリア</button>
+      <button class="btn btn-primary" onclick="generate()">カレンダーに反映</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail/Edit Modal -->
+<div class="modal-overlay" id="detailOverlay" onclick="closeModalOutside(event,'detailOverlay')">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="detailTitle">予定の詳細</h2>
+      <button class="modal-close" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="detailId">
+      <div class="detail-field">
+        <div class="detail-label">用件</div>
+        <input type="text" class="detail-input" id="detailName" placeholder="予定のタイトル">
+      </div>
+      <div class="detail-field">
+        <div class="detail-label">日付</div>
+        <input type="date" class="detail-input" id="detailDate">
+      </div>
+      <div class="detail-toggle">
+        <input type="checkbox" class="toggle-switch" id="detailAllDay" onchange="toggleAllDay()">
+        <label for="detailAllDay">終日</label>
+      </div>
+      <div class="detail-row" id="detailTimeRow">
+        <div class="detail-field">
+          <div class="detail-label">開始時間</div>
+          <input type="time" class="detail-input" id="detailStart">
+        </div>
+        <div class="detail-field">
+          <div class="detail-label">終了時間</div>
+          <input type="time" class="detail-input" id="detailEnd">
+        </div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-label">色</div>
+        <div class="color-picker" id="colorPicker"></div>
+      </div>
+      <div class="detail-field">
+        <div class="detail-label">メモ</div>
+        <textarea class="detail-memo" id="detailMemo" placeholder="メモを入力..."></textarea>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteEvent()">削除</button>
+      <button class="btn btn-primary" onclick="saveEvent()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- Firebase Init ---
+const firebaseConfig = {
+  apiKey: "AIzaSyAUtRFzXSUBM5ndtdZHpD-KkABTZ10pfJ8",
+  authDomain: "bullet-calendar-3a464.firebaseapp.com",
+  databaseURL: "https://bullet-calendar-3a464-default-rtdb.firebaseio.com",
+  projectId: "bullet-calendar-3a464",
+  storageBucket: "bullet-calendar-3a464.firebasestorage.app",
+  messagingSenderId: "696828128636",
+  appId: "1:696828128636:web:89de20b5e87f9271d5c8f9",
+  measurementId: "G-G5XM3GV452"
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+let currentUser = null;
+
+// --- Auth ---
+auth.onAuthStateChanged(user => {
+  document.getElementById('loadingScreen').style.display = 'none';
+  if (user) {
+    currentUser = user;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = '';
+    document.getElementById('userAvatar').src = user.photoURL || '';
+    document.getElementById('userName').textContent = user.displayName || 'ユーザー';
+    document.getElementById('userEmail').textContent = user.email || '';
+    initApp();
+  } else {
+    currentUser = null;
+    document.getElementById('loginScreen').style.display = '';
+    document.getElementById('mainApp').style.display = 'none';
+  }
+});
+
+function signIn() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(err => {
+    document.getElementById('loginError').textContent = 'ログインに失敗しました: ' + err.message;
+  });
+}
+
+function signOut() {
+  auth.signOut();
+  events = [];
+  closeUserMenu();
+}
+
+function toggleUserMenu() {
+  document.getElementById('userMenuOverlay').classList.toggle('open');
+}
+function closeUserMenu() {
+  document.getElementById('userMenuOverlay').classList.remove('open');
+}
+
+// --- App State ---
+let events = [];
+let currentYear, currentMonth, selectedDay;
+let currentView = 'month';
+let nextId = 1;
+const EVENT_COLORS = 10;
+const EVENT_COLOR_HEX = ['#2EC84E','#007AFF','#FF9500','#FF3B30','#AF52DE','#FF2D55','#5AC8FA','#FFCC00','#34C759','#FF6482'];
+const EVENT_COLOR_NAMES = ['緑','青','オレンジ','赤','紫','ピンク','水色','黄','黄緑','ローズ'];
+const DOW_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+const COLOR_NAME_MAP = {
+  '緑': 0, 'green': 0, '青': 1, 'blue': 1, 'オレンジ': 2, 'orange': 2,
+  '赤': 3, 'red': 3, '紫': 4, 'purple': 4, 'ピンク': 5, 'pink': 5,
+  '水色': 6, 'cyan': 6, '黄': 7, 'yellow': 7, '黄色': 7,
+  '黄緑': 8, 'lime': 8, 'ローズ': 9, 'rose': 9,
+};
+const pad = n => String(n).padStart(2, '0');
+
+function initApp() {
+  const now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
+  selectedDay = now.getDate();
+  loadEventsFromFirestore();
+}
+
+// --- Firestore ---
+function userEventsRef() {
+  return db.collection('users').doc(currentUser.uid).collection('events');
+}
+
+async function loadEventsFromFirestore() {
+  try {
+    const snapshot = await userEventsRef().get();
+    events = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      data.id = parseInt(doc.id);
+      events.push(data);
+    });
+    nextId = events.length > 0 ? events.reduce((max, e) => Math.max(max, e.id + 1), 1) : 1;
+    events.sort((a, b) => {
+      const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
+      const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
+      return da - db2;
+    });
+    rebuildTextarea();
+    refreshView();
+  } catch (err) {
+    console.error('Firestore load error:', err);
+  }
+}
+
+async function saveEventToFirestore(ev) {
+  try {
+    await userEventsRef().doc(String(ev.id)).set(ev);
+  } catch (err) {
+    console.error('Firestore save error:', err);
+  }
+}
+
+async function deleteEventFromFirestore(id) {
+  try {
+    await userEventsRef().doc(String(id)).delete();
+  } catch (err) {
+    console.error('Firestore delete error:', err);
+  }
+}
+
+async function saveAllEventsToFirestore() {
+  try {
+    const batch = db.batch();
+    // Delete all existing
+    const snapshot = await userEventsRef().get();
+    snapshot.forEach(doc => batch.delete(doc.ref));
+    // Write all current
+    for (const ev of events) {
+      batch.set(userEventsRef().doc(String(ev.id)), ev);
+    }
+    await batch.commit();
+  } catch (err) {
+    console.error('Firestore batch save error:', err);
+  }
+}
+
+// --- Modal ---
+function openModal() { document.getElementById('modalOverlay').classList.add('open'); }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModalOutside(e, id) { if (e.target === e.currentTarget) document.getElementById(id).classList.remove('open'); }
+
+// --- Detail Modal ---
+function openDetail(id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  document.getElementById('detailId').value = id;
+  document.getElementById('detailName').value = ev.title;
+  document.getElementById('detailDate').value = `${ev.year}-${pad(ev.month+1)}-${pad(ev.day)}`;
+  document.getElementById('detailAllDay').checked = ev.allDay;
+  document.getElementById('detailStart').value = ev.startTime || '09:00';
+  document.getElementById('detailEnd').value = ev.endTime || '10:00';
+  document.getElementById('detailMemo').value = ev.memo || '';
+  document.getElementById('detailTimeRow').style.display = ev.allDay ? 'none' : '';
+
+  const picker = document.getElementById('colorPicker');
+  picker.innerHTML = '';
+  for (let i = 0; i < EVENT_COLORS; i++) {
+    const el = document.createElement('div');
+    el.className = 'color-option' + (i === ev.color ? ' selected' : '');
+    el.style.background = EVENT_COLOR_HEX[i];
+    el.title = EVENT_COLOR_NAMES[i];
+    el.onclick = () => {
+      picker.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+    };
+    picker.appendChild(el);
+  }
+  document.getElementById('detailOverlay').classList.add('open');
+}
+
+function closeDetail() { document.getElementById('detailOverlay').classList.remove('open'); }
+
+function toggleAllDay() {
+  document.getElementById('detailTimeRow').style.display =
+    document.getElementById('detailAllDay').checked ? 'none' : '';
+}
+
+async function saveEvent() {
+  const id = parseInt(document.getElementById('detailId').value);
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+
+  const dateVal = document.getElementById('detailDate').value;
+  if (!dateVal) return;
+  const [y, m, d] = dateVal.split('-').map(Number);
+
+  ev.title = document.getElementById('detailName').value || '(無題)';
+  ev.year = y; ev.month = m - 1; ev.day = d;
+  ev.allDay = document.getElementById('detailAllDay').checked;
+  ev.dateStr = `${y}/${pad(m)}/${pad(d)}`;
+
+  if (!ev.allDay) {
+    const st = document.getElementById('detailStart').value;
+    const et = document.getElementById('detailEnd').value;
+    ev.startTime = st || null;
+    ev.endTime = et || null;
+    if (st) { const p = st.split(':').map(Number); ev.startHour = p[0]; ev.startMin = p[1]; }
+    if (et) { const p = et.split(':').map(Number); ev.endHour = p[0]; ev.endMin = p[1]; }
+    else { ev.endHour = ev.startHour + 1; ev.endMin = ev.startMin; }
+  } else {
+    ev.startTime = null; ev.endTime = null;
+    ev.startHour = 0; ev.startMin = 0; ev.endHour = 23; ev.endMin = 59;
+  }
+
+  ev.memo = document.getElementById('detailMemo').value;
+
+  const selectedColorEl = document.querySelector('#colorPicker .color-option.selected');
+  if (selectedColorEl) {
+    const idx = Array.from(document.getElementById('colorPicker').children).indexOf(selectedColorEl);
+    ev.color = idx;
+  }
+
+  events.sort((a, b) => {
+    const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
+    const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
+    return da - db2;
+  });
+
+  await saveEventToFirestore(ev);
+  rebuildTextarea();
+  closeDetail();
+  refreshView();
+}
+
+async function deleteEvent() {
+  const id = parseInt(document.getElementById('detailId').value);
+  events = events.filter(e => e.id !== id);
+  await deleteEventFromFirestore(id);
+  rebuildTextarea();
+  closeDetail();
+  refreshView();
+}
+
+function rebuildTextarea() {
+  const lines = events.map(ev => {
+    let line = `${ev.year}/${ev.month+1}/${ev.day} `;
+    if (ev.allDay) {
+      line += '終日 ';
+    } else if (ev.startTime) {
+      line += ev.startTime;
+      if (ev.endTime) line += '-' + ev.endTime;
+      line += ' ';
+    }
+    line += ev.title;
+    const cname = EVENT_COLOR_NAMES[ev.color];
+    if (cname) line += ` #${cname}`;
+    return '- ' + line;
+  });
+  document.getElementById('input').value = lines.join('\n');
+}
+
+// --- View switching ---
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.getElementById('monthView').style.display = view === 'month' ? '' : 'none';
+  document.getElementById('dayView').style.display = view === 'day' ? '' : 'none';
+  document.getElementById('listView').style.display = view === 'list' ? '' : 'none';
+  document.querySelector('.month-nav').style.display = view === 'day' ? 'none' : '';
+  if (view === 'day') renderDayView();
+  if (view === 'list') renderListView();
+}
+
+function refreshView() {
+  renderCalendar();
+  if (currentView === 'day') renderDayView();
+  if (currentView === 'list') renderListView();
+}
+
+// --- Parse ---
+function parseEvents(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const parsed = [];
+  const errors = [];
+  const now = new Date();
+  let colorIndex = 0;
+  const titleColors = {};
+
+  for (const line of lines) {
+    const clean = line.replace(/^[-\*・•]\s*/, '');
+    if (!clean) continue;
+
+    const m =
+      clean.match(/^(?:(\d{4})年)?(1?\d)月(3?[0-9]|[12]\d|0?[1-9])日\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/) ||
+      clean.match(/^(?:(\d{4})\/)?(1?\d)\/(3?[0-9]|[12]\d|0?[1-9])\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/) ||
+      clean.match(/^(?:(\d{4})-)?(1?\d)-(3?[0-9]|[12]\d|0?[1-9])\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/);
+    if (!m) { errors.push(clean); continue; }
+
+    const year = m[1] ? parseInt(m[1]) : now.getFullYear();
+    const month = parseInt(m[2]) - 1;
+    const day = parseInt(m[3]);
+    const startTime = m[4] || null;
+    const endTime = m[5] || null;
+    let rawTitle = m[6].trim();
+
+    const date = new Date(year, month, day);
+    if (date.getMonth() !== month || date.getDate() !== day) {
+      errors.push(clean + ' (無効な日付)');
+      continue;
+    }
+
+    let manualColor = null;
+    const colorTag = rawTitle.match(/\s+#(\S+)$/);
+    if (colorTag && colorTag[1] in COLOR_NAME_MAP) {
+      manualColor = COLOR_NAME_MAP[colorTag[1]];
+      rawTitle = rawTitle.replace(/\s+#\S+$/, '');
+    }
+    const title = rawTitle;
+
+    let assignedColor;
+    if (manualColor !== null) {
+      assignedColor = manualColor;
+    } else {
+      if (!(title in titleColors)) {
+        titleColors[title] = colorIndex % EVENT_COLORS;
+        colorIndex++;
+      }
+      assignedColor = titleColors[title];
+    }
+
+    let startHour = 0, startMin = 0, endHour = 23, endMin = 59;
+    if (startTime) {
+      [startHour, startMin] = startTime.split(':').map(Number);
+      if (endTime) {
+        [endHour, endMin] = endTime.split(':').map(Number);
+      } else {
+        endHour = startHour + 1; endMin = startMin;
+      }
+    }
+
+    parsed.push({
+      id: nextId++,
+      year, month, day, title, startTime, endTime,
+      startHour, startMin, endHour, endMin,
+      allDay: !startTime,
+      color: assignedColor,
+      memo: '',
+      dateStr: `${year}/${pad(month+1)}/${pad(day)}`
+    });
+  }
+
+  parsed.sort((a, b) => {
+    const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
+    const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
+    return da - db2;
+  });
+
+  return { parsed, errors };
+}
+
+// --- Generate ---
+async function generate() {
+  const text = document.getElementById('input').value;
+  const result = parseEvents(text);
+  events = result.parsed;
+
+  const errEl = document.getElementById('errors');
+  errEl.textContent = result.errors.length
+    ? '解析できない行: ' + result.errors.join(', ') : '';
+
+  if (events.length > 0) {
+    currentYear = events[0].year;
+    currentMonth = events[0].month;
+    selectedDay = events[0].day;
+  }
+
+  await saveAllEventsToFirestore();
+  closeModal();
+  refreshView();
+}
+
+// --- Render event item HTML ---
+function evItemHtml(ev) {
+  const timeStr = ev.allDay ? '終日' : (ev.endTime ? `${ev.startTime}-${ev.endTime}` : ev.startTime);
+  const memoHint = ev.memo ? '<span class="ev-memo-hint">&#x1F4DD;</span>' : '';
+  return `<div class="ev-item ev-color-${ev.color}" onclick="openDetail(${ev.id})">
+    <div class="ev-time">${timeStr}</div>
+    <div class="ev-title">${escapeHtml(ev.title)}${memoHint}</div>
+  </div>`;
+}
+
+// --- Calendar Render ---
+function renderCalendar() {
+  const grid = document.getElementById('calGrid');
+  const label = document.getElementById('monthLabel');
+  label.textContent = `${currentYear}年 ${currentMonth + 1}月`;
+
+  const firstDow = new Date(currentYear, currentMonth, 1).getDay();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const prevMonthDays = new Date(currentYear, currentMonth, 0).getDate();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}/${pad(today.getMonth()+1)}/${pad(today.getDate())}`;
+
+  let html = DOW_NAMES.map((d, i) =>
+    `<div class="cal-dow${i===0?' sun':''}${i===6?' sat':''}">${d}</div>`
+  ).join('');
+
+  for (let i = firstDow - 1; i >= 0; i--) {
+    html += `<div class="cal-cell other-month"><div class="cal-num">${prevMonthDays - i}</div><div class="cal-dots"></div></div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = `${currentYear}/${pad(currentMonth+1)}/${pad(d)}`;
+    const dow = new Date(currentYear, currentMonth, d).getDay();
+    const isToday = dateStr === todayStr;
+    const isSelected = d === selectedDay;
+    const dayEvents = events.filter(e => e.dateStr === dateStr);
+
+    let cls = 'cal-cell';
+    if (isToday) cls += ' today';
+    if (isSelected) cls += ' selected';
+    if (dow === 0) cls += ' sun';
+    if (dow === 6) cls += ' sat';
+
+    const dots = dayEvents.slice(0, 4).map(e => `<div class="cal-dot color-${e.color}"></div>`).join('');
+    html += `<div class="${cls}" onclick="selectDay(${d})">
+      <div class="cal-num">${d}</div>
+      <div class="cal-dots">${dots}</div>
+    </div>`;
+  }
+
+  const totalCells = firstDow + daysInMonth;
+  const remaining = (7 - (totalCells % 7)) % 7;
+  for (let i = 1; i <= remaining; i++) {
+    html += `<div class="cal-cell other-month"><div class="cal-num">${i}</div><div class="cal-dots"></div></div>`;
+  }
+
+  grid.innerHTML = html;
+  renderDayPanel();
+}
+
+function selectDay(d) { selectedDay = d; renderCalendar(); }
+
+function renderDayPanel() {
+  const panel = document.getElementById('dayPanel');
+  const dateStr = `${currentYear}/${pad(currentMonth+1)}/${pad(selectedDay)}`;
+  const dow = new Date(currentYear, currentMonth, selectedDay).getDay();
+  const dayEvents = events.filter(e => e.dateStr === dateStr);
+
+  let html = `<div class="day-panel-header">
+    ${currentMonth+1}月${selectedDay}日
+    <span class="day-panel-dow">(${DOW_NAMES[dow]})</span>
+  </div>`;
+
+  if (dayEvents.length === 0) {
+    html += '<div class="no-events">予定はありません</div>';
+  } else {
+    for (const ev of dayEvents) html += evItemHtml(ev);
+  }
+  panel.innerHTML = html;
+}
+
+// --- Day View ---
+function renderDayView() {
+  const container = document.getElementById('dayView');
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}/${pad(today.getMonth()+1)}/${pad(today.getDate())}`;
+
+  const centerDate = new Date(currentYear, currentMonth, selectedDay);
+  const startDate = new Date(centerDate); startDate.setDate(startDate.getDate() - 60);
+  const endDate = new Date(centerDate); endDate.setDate(endDate.getDate() + 60);
+
+  let html = '';
+  const d = new Date(startDate);
+  while (d <= endDate) {
+    const yr = d.getFullYear(), mo = d.getMonth(), dy = d.getDate();
+    const dow = d.getDay();
+    const dateStr = `${yr}/${pad(mo+1)}/${pad(dy)}`;
+    const isToday = dateStr === todayStr;
+    const dayEvents = events.filter(e => e.dateStr === dateStr);
+    const allDayEvents = dayEvents.filter(e => e.allDay);
+    const timedEvents = dayEvents.filter(e => !e.allDay);
+
+    let headerCls = 'dv-day-header';
+    if (isToday) headerCls += ' today';
+    if (dow === 0) headerCls += ' sun';
+    if (dow === 6) headerCls += ' sat';
+
+    html += `<div class="dv-day-section" data-date="${dateStr}">`;
+    html += `<div class="${headerCls}">
+      <div class="dv-day-date">${dy}</div>
+      <div class="dv-day-meta">
+        <span class="dv-day-dow">${DOW_NAMES[dow]}曜日</span>
+        <span class="dv-day-ym">${yr}年${mo+1}月</span>
+      </div>
+    </div>`;
+
+    if (allDayEvents.length > 0) {
+      html += '<div class="dv-allday">';
+      for (const ev of allDayEvents) {
+        html += `<span class="dv-allday-item color-${ev.color}" onclick="openDetail(${ev.id})">${escapeHtml(ev.title)}</span>`;
+      }
+      html += '</div>';
+    }
+
+    if (timedEvents.length > 0) {
+      html += '<div class="dv-timeline" style="position:relative;">';
+      for (let h = 0; h < 24; h++) {
+        html += `<div class="dv-hour-row">
+          <div class="dv-hour-label">${h}:00</div>
+          <div class="dv-hour-content"></div>
+        </div>`;
+      }
+      if (isToday) {
+        const nowMin = today.getHours() * 60 + today.getMinutes();
+        const top = (nowMin / 60) * 60;
+        html += `<div class="dv-now-dot" style="top:${top}px;"></div>`;
+        html += `<div class="dv-now-line" style="top:${top}px;"></div>`;
+      }
+      for (const ev of timedEvents) {
+        const startMin = ev.startHour * 60 + ev.startMin;
+        const endMin = ev.endHour * 60 + ev.endMin;
+        const top = (startMin / 60) * 60;
+        const height = Math.max(((endMin - startMin) / 60) * 60, 24);
+        const timeLabel = ev.endTime ? `${ev.startTime} - ${ev.endTime}` : ev.startTime;
+        html += `<div class="dv-event" onclick="openDetail(${ev.id})" style="top:${top}px;height:${height}px;background:${EVENT_COLOR_HEX[ev.color]};">
+          <div class="dv-event-title">${escapeHtml(ev.title)}</div>
+          <div class="dv-event-time">${timeLabel}</div>
+        </div>`;
+      }
+      html += '</div>';
+    } else if (allDayEvents.length === 0) {
+      html += '<div class="dv-empty">予定なし</div>';
+    }
+
+    html += '</div>';
+    d.setDate(d.getDate() + 1);
+  }
+
+  container.innerHTML = html;
+  requestAnimationFrame(() => {
+    const target = container.querySelector(`[data-date="${currentYear}/${pad(currentMonth+1)}/${pad(selectedDay)}"]`);
+    if (target) target.scrollIntoView({ block: 'start' });
+  });
+}
+
+// --- List View ---
+function renderListView() {
+  const container = document.getElementById('listView');
+  const monthEvents = events.filter(e => e.year === currentYear && e.month === currentMonth);
+
+  if (monthEvents.length === 0) {
+    container.innerHTML = '<div class="no-events" style="padding:20px 0;">この月の予定はありません</div>';
+    return;
+  }
+
+  const groups = {};
+  for (const ev of monthEvents) {
+    if (!groups[ev.day]) groups[ev.day] = [];
+    groups[ev.day].push(ev);
+  }
+
+  let html = '';
+  for (const day of Object.keys(groups).map(Number).sort((a,b) => a-b)) {
+    const dow = new Date(currentYear, currentMonth, day).getDay();
+    html += `<div class="list-date-group">
+      <div class="list-date-header">
+        ${currentMonth+1}/${day} <span class="list-date-dow">${DOW_NAMES[dow]}</span>
+      </div>`;
+    for (const ev of groups[day]) html += evItemHtml(ev);
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+// --- Navigation ---
+function changeMonth(delta) {
+  currentMonth += delta;
+  if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+  if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+  selectedDay = 1;
+  refreshView();
+}
+
+function goToday() {
+  const now = new Date();
+  currentYear = now.getFullYear();
+  currentMonth = now.getMonth();
+  selectedDay = now.getDate();
+  refreshView();
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Export ---
+function exportICS() {
+  if (events.length === 0) { alert('予定がありません。「+ 入力」から予定を追加してください。'); return; }
+  let ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//BulletCalendar//JP//JA\r\nCALSCALE:GREGORIAN\r\n';
+  for (const ev of events) {
+    const uid = `${ev.dateStr.replace(/\//g,'')}${ev.startHour}${ev.startMin}-${Math.random().toString(36).slice(2,8)}@bulletcal`;
+    ics += 'BEGIN:VEVENT\r\n';
+    ics += `UID:${uid}\r\n`;
+    ics += `SUMMARY:${ev.title}\r\n`;
+    if (ev.memo) ics += `DESCRIPTION:${ev.memo.replace(/\n/g,'\\n')}\r\n`;
+    if (ev.allDay) {
+      ics += `DTSTART;VALUE=DATE:${ev.year}${pad(ev.month+1)}${pad(ev.day)}\r\n`;
+      ics += `DTEND;VALUE=DATE:${ev.year}${pad(ev.month+1)}${pad(ev.day+1)}\r\n`;
+    } else {
+      ics += `DTSTART:${ev.year}${pad(ev.month+1)}${pad(ev.day)}T${pad(ev.startHour)}${pad(ev.startMin)}00\r\n`;
+      ics += `DTEND:${ev.year}${pad(ev.month+1)}${pad(ev.day)}T${pad(ev.endHour)}${pad(ev.endMin)}00\r\n`;
+    }
+    ics += 'END:VEVENT\r\n';
+  }
+  ics += 'END:VCALENDAR\r\n';
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'calendar.ics';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function clearAll() {
+  document.getElementById('input').value = '';
+  document.getElementById('errors').textContent = '';
+  events = [];
+  await saveAllEventsToFirestore();
+  goToday();
+}
+</script>
+</body>
+</html>
