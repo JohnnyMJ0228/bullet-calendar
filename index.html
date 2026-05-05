@@ -781,25 +781,27 @@ function parseEvents(text) {
   let colorIndex = 0;
   const titleColors = {};
 
-  const S = '[\\s\u3000]+'; // half-width and full-width space
-  const S_OPT = '[\\s\u3000]*';
-  const DATE_TIME_SUFFIX = S + '(?:終日' + S + ')?(?:(\\d{1,2}[:\uff1a]\\d{2})(?:' + S_OPT + '[-~〜]' + S_OPT + '(\\d{1,2}[:\uff1a]\\d{2}))?' + S + ')?(.+)$';
-  const RE_JP = new RegExp('^(?:(\\d{4})年)?(1?\\d)月(3?[0-9]|[12]\\d|0?[1-9])日' + DATE_TIME_SUFFIX);
-  const RE_SLASH = new RegExp('^(?:(\\d{4})/)?(1?\\d)/(3?[0-9]|[12]\\d|0?[1-9])' + DATE_TIME_SUFFIX);
-  const RE_DASH = new RegExp('^(?:(\\d{4})-)?(1?\\d)-(3?[0-9]|[12]\\d|0?[1-9])' + DATE_TIME_SUFFIX);
-
   for (const line of lines) {
-    const clean = line.replace(/^[-\*・•][\s\u3000]*/, '');
+    // Normalize: full-width spaces/colons/hyphens to half-width
+    let clean = line.replace(/^[-\*・•]\s*/, '');
+    clean = clean.replace(/\u3000/g, ' ');  // full-width space → half-width
+    clean = clean.replace(/\uff1a/g, ':');   // full-width colon → half-width
+    clean = clean.replace(/\uff0d/g, '-');   // full-width hyphen → half-width
+    clean = clean.replace(/\uff0f/g, '/');   // full-width slash → half-width
+    clean = clean.replace(/\s+/g, ' ').trim(); // collapse multiple spaces
     if (!clean) continue;
 
-    const m = clean.match(RE_JP) || clean.match(RE_SLASH) || clean.match(RE_DASH);
+    const m =
+      clean.match(/^(?:(\d{4})年)?(1?\d)月(3?[0-9]|[12]\d|0?[1-9])日 (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/) ||
+      clean.match(/^(?:(\d{4})\/)?(1?\d)\/(3?[0-9]|[12]\d|0?[1-9]) (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/) ||
+      clean.match(/^(?:(\d{4})-)?(1?\d)-(3?[0-9]|[12]\d|0?[1-9]) (?:終日 )?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))? )?(.+)$/);
     if (!m) { errors.push(clean); continue; }
 
     const year = m[1] ? parseInt(m[1]) : now.getFullYear();
     const month = parseInt(m[2]) - 1;
     const day = parseInt(m[3]);
-    const startTime = m[4] ? m[4].replace('\uff1a', ':') : null;
-    const endTime = m[5] ? m[5].replace('\uff1a', ':') : null;
+    const startTime = m[4] || null;
+    const endTime = m[5] || null;
     let rawTitle = m[6].trim();
 
     const date = new Date(year, month, day);
