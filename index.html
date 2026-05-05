@@ -322,6 +322,16 @@ textarea:focus { border-color: var(--primary); background: #fff; }
   min-height: 100vh; font-size: 15px; color: var(--text-sub);
 }
 
+/* Toast notification */
+.toast {
+  position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-80px);
+  background: #1a1a1a; color: #fff; padding: 12px 24px; border-radius: 12px;
+  font-size: 14px; font-weight: 500; z-index: 200;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  transition: transform 0.3s ease; pointer-events: none;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
 @media (min-width: 521px) {
   .app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); }
 }
@@ -383,6 +393,8 @@ textarea:focus { border-color: var(--primary); background: #fff; }
     <div id="listView" class="list-view" style="display:none;"></div>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <!-- Input Modal -->
 <div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event,'modalOverlay')">
@@ -688,6 +700,7 @@ async function saveEvent() {
   rebuildTextarea();
   closeDetail();
   refreshView();
+  showToast('予定を更新しました');
 }
 
 async function deleteEvent() {
@@ -697,6 +710,7 @@ async function deleteEvent() {
   rebuildTextarea();
   closeDetail();
   refreshView();
+  showToast('予定を削除しました');
 }
 
 function rebuildTextarea() {
@@ -744,21 +758,25 @@ function parseEvents(text) {
   let colorIndex = 0;
   const titleColors = {};
 
+  const S = '[\\s\u3000]+'; // half-width and full-width space
+  const S_OPT = '[\\s\u3000]*';
+  const DATE_TIME_SUFFIX = S + '(?:終日' + S + ')?(?:(\\d{1,2}[:\uff1a]\\d{2})(?:' + S_OPT + '[-~〜]' + S_OPT + '(\\d{1,2}[:\uff1a]\\d{2}))?' + S + ')?(.+)$';
+  const RE_JP = new RegExp('^(?:(\\d{4})年)?(1?\\d)月(3?[0-9]|[12]\\d|0?[1-9])日' + DATE_TIME_SUFFIX);
+  const RE_SLASH = new RegExp('^(?:(\\d{4})/)?(1?\\d)/(3?[0-9]|[12]\\d|0?[1-9])' + DATE_TIME_SUFFIX);
+  const RE_DASH = new RegExp('^(?:(\\d{4})-)?(1?\\d)-(3?[0-9]|[12]\\d|0?[1-9])' + DATE_TIME_SUFFIX);
+
   for (const line of lines) {
-    const clean = line.replace(/^[-\*・•]\s*/, '');
+    const clean = line.replace(/^[-\*・•][\s\u3000]*/, '');
     if (!clean) continue;
 
-    const m =
-      clean.match(/^(?:(\d{4})年)?(1?\d)月(3?[0-9]|[12]\d|0?[1-9])日\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/) ||
-      clean.match(/^(?:(\d{4})\/)?(1?\d)\/(3?[0-9]|[12]\d|0?[1-9])\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/) ||
-      clean.match(/^(?:(\d{4})-)?(1?\d)-(3?[0-9]|[12]\d|0?[1-9])\s+(?:終日\s+)?(?:(\d{1,2}:\d{2})(?:\s*[-~〜]\s*(\d{1,2}:\d{2}))?\s+)?(.+)$/);
+    const m = clean.match(RE_JP) || clean.match(RE_SLASH) || clean.match(RE_DASH);
     if (!m) { errors.push(clean); continue; }
 
     const year = m[1] ? parseInt(m[1]) : now.getFullYear();
     const month = parseInt(m[2]) - 1;
     const day = parseInt(m[3]);
-    const startTime = m[4] || null;
-    const endTime = m[5] || null;
+    const startTime = m[4] ? m[4].replace('\uff1a', ':') : null;
+    const endTime = m[5] ? m[5].replace('\uff1a', ':') : null;
     let rawTitle = m[6].trim();
 
     const date = new Date(year, month, day);
@@ -850,6 +868,7 @@ async function generate() {
   rebuildTextarea();
   closeModal();
   refreshView();
+  showToast(`${result.parsed.length}件の予定を追加しました`);
 }
 
 // --- Render event item HTML ---
@@ -1061,6 +1080,13 @@ function goToday() {
   currentMonth = now.getMonth();
   selectedDay = now.getDate();
   refreshView();
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
 }
 
 function escapeHtml(s) {
