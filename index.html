@@ -547,11 +547,34 @@ const COLOR_NAME_MAP = {
 };
 const pad = n => String(n).padStart(2, '0');
 
-function initApp() {
+async function initApp() {
   const now = new Date();
   currentYear = now.getFullYear();
   currentMonth = now.getMonth();
   selectedDay = now.getDate();
+
+  // Migrate localStorage data to Firestore (one-time)
+  const localEvents = localStorage.getItem('cal-events');
+  if (localEvents) {
+    try {
+      const localData = JSON.parse(localEvents);
+      if (localData.length > 0) {
+        // Check if Firestore is empty (first migration)
+        const snapshot = await userEventsRef().get();
+        if (snapshot.empty) {
+          for (const ev of localData) {
+            await userEventsRef().doc(String(ev.id)).set(ev);
+          }
+        }
+      }
+      // Clear localStorage after migration
+      localStorage.removeItem('cal-events');
+      localStorage.removeItem('cal-input');
+    } catch (e) {
+      console.error('Migration error:', e);
+    }
+  }
+
   loadEventsFromFirestore();
 }
 
