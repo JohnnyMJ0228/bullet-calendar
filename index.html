@@ -820,19 +820,34 @@ function parseEvents(text) {
 async function generate() {
   const text = document.getElementById('input').value;
   const result = parseEvents(text);
-  events = result.parsed;
 
   const errEl = document.getElementById('errors');
   errEl.textContent = result.errors.length
     ? '解析できない行: ' + result.errors.join(', ') : '';
 
-  if (events.length > 0) {
-    currentYear = events[0].year;
-    currentMonth = events[0].month;
-    selectedDay = events[0].day;
+  if (result.parsed.length === 0) return;
+
+  // Append new events to existing
+  events = events.concat(result.parsed);
+  events.sort((a, b) => {
+    const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
+    const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
+    return da - db2;
+  });
+
+  // Save new events to Firestore
+  for (const ev of result.parsed) {
+    await saveEventToFirestore(ev);
   }
 
-  await saveAllEventsToFirestore();
+  // Jump to first new event
+  currentYear = result.parsed[0].year;
+  currentMonth = result.parsed[0].month;
+  selectedDay = result.parsed[0].day;
+
+  // Clear input for next entry
+  document.getElementById('input').value = '';
+  rebuildTextarea();
   closeModal();
   refreshView();
 }
