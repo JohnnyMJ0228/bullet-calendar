@@ -598,7 +598,6 @@ async function loadEventsFromFirestore() {
       const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
       return da - db2;
     });
-    rebuildTextarea();
     refreshView();
   } catch (err) {
     console.error('Firestore load error:', err);
@@ -720,7 +719,6 @@ async function saveEvent() {
   });
 
   await saveEventToFirestore(ev);
-  rebuildTextarea();
   closeDetail();
   refreshView();
   showToast('予定を更新しました');
@@ -730,28 +728,9 @@ async function deleteEvent() {
   const id = parseInt(document.getElementById('detailId').value);
   events = events.filter(e => e.id !== id);
   await deleteEventFromFirestore(id);
-  rebuildTextarea();
   closeDetail();
   refreshView();
   showToast('予定を削除しました');
-}
-
-function rebuildTextarea() {
-  const lines = events.map(ev => {
-    let line = `${ev.year}/${ev.month+1}/${ev.day} `;
-    if (ev.allDay) {
-      line += '終日 ';
-    } else if (ev.startTime) {
-      line += ev.startTime;
-      if (ev.endTime) line += '-' + ev.endTime;
-      line += ' ';
-    }
-    line += ev.title;
-    const cname = EVENT_COLOR_NAMES[ev.color];
-    if (cname) line += ` #${cname}`;
-    return '- ' + line;
-  });
-  document.getElementById('input').value = lines.join('\n');
 }
 
 // --- View switching ---
@@ -913,14 +892,14 @@ function parseEvents(text) {
 }
 
 // --- Generate ---
-async function generate() {
+function generate() {
   const text = document.getElementById('input').value;
   if (!text.trim()) return;
   const result = parseEvents(text);
-
   const errEl = document.getElementById('errors');
+  const addedCount = result.parsed.length;
 
-  if (result.parsed.length > 0) {
+  if (addedCount > 0) {
     // Append new events to existing
     events = events.concat(result.parsed);
     events.sort((a, b) => {
@@ -929,18 +908,13 @@ async function generate() {
       return da - db2;
     });
 
-    // Save new events to Firestore
-    for (const ev of result.parsed) {
-      await saveEventToFirestore(ev);
-    }
-
     // Jump to first new event
     currentYear = result.parsed[0].year;
     currentMonth = result.parsed[0].month;
     selectedDay = result.parsed[0].day;
   }
 
-  // Keep only error lines in the input, clear everything else
+  // Clear input / keep only error lines
   if (result.errors.length > 0) {
     document.getElementById('input').value = result.errors.map(e => '- ' + e).join('\n');
     errEl.textContent = '解析できない行が残っています';
@@ -949,10 +923,15 @@ async function generate() {
     errEl.textContent = '';
   }
 
-  if (result.parsed.length > 0) {
+  if (addedCount > 0) {
     closeModal();
     refreshView();
-    setTimeout(() => showToast(`${result.parsed.length}件の予定を追加しました`), 350);
+    setTimeout(function() { showToast(addedCount + '件の予定を追加しました'); }, 400);
+
+    // Save to Firestore in background
+    for (const ev of result.parsed) {
+      saveEventToFirestore(ev);
+    }
   }
 }
 
