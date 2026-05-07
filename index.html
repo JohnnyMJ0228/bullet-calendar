@@ -915,37 +915,45 @@ function parseEvents(text) {
 // --- Generate ---
 async function generate() {
   const text = document.getElementById('input').value;
+  if (!text.trim()) return;
   const result = parseEvents(text);
 
   const errEl = document.getElementById('errors');
-  errEl.textContent = result.errors.length
-    ? '解析できない行: ' + result.errors.join(', ') : '';
 
-  if (result.parsed.length === 0) return;
+  if (result.parsed.length > 0) {
+    // Append new events to existing
+    events = events.concat(result.parsed);
+    events.sort((a, b) => {
+      const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
+      const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
+      return da - db2;
+    });
 
-  // Append new events to existing
-  events = events.concat(result.parsed);
-  events.sort((a, b) => {
-    const da = new Date(a.year, a.month, a.day, a.startHour, a.startMin);
-    const db2 = new Date(b.year, b.month, b.day, b.startHour, b.startMin);
-    return da - db2;
-  });
+    // Save new events to Firestore
+    for (const ev of result.parsed) {
+      await saveEventToFirestore(ev);
+    }
 
-  // Save new events to Firestore
-  for (const ev of result.parsed) {
-    await saveEventToFirestore(ev);
+    // Jump to first new event
+    currentYear = result.parsed[0].year;
+    currentMonth = result.parsed[0].month;
+    selectedDay = result.parsed[0].day;
   }
 
-  // Jump to first new event
-  currentYear = result.parsed[0].year;
-  currentMonth = result.parsed[0].month;
-  selectedDay = result.parsed[0].day;
+  // Keep only error lines in the input, clear everything else
+  if (result.errors.length > 0) {
+    document.getElementById('input').value = result.errors.map(e => '- ' + e).join('\n');
+    errEl.textContent = '解析できない行が残っています';
+  } else {
+    document.getElementById('input').value = '';
+    errEl.textContent = '';
+  }
 
-  // Clear input for next entry
-  document.getElementById('input').value = '';
-  closeModal();
-  refreshView();
-  setTimeout(() => showToast(`${result.parsed.length}件の予定を追加しました`), 350);
+  if (result.parsed.length > 0) {
+    closeModal();
+    refreshView();
+    setTimeout(() => showToast(`${result.parsed.length}件の予定を追加しました`), 350);
+  }
 }
 
 // --- Render event item HTML ---
@@ -1208,4 +1216,3 @@ async function clearAll() {
 </script>
 </body>
 </html>
-
